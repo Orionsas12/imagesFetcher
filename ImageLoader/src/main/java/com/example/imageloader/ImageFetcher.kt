@@ -23,25 +23,37 @@ class ImageLoader(
 
         scope.launch {
             val cachedFile = getFile(context, url)
+            val bitmap = withContext(Dispatchers.IO){ // moving file operations to IO dispatcher since we need to search "disk" it might block main thread
+                if (cachedFile.exists() && (System.currentTimeMillis() - cachedFile.lastModified() < EXPIRATION_MS)) {
+                    BitmapFactory.decodeFile(cachedFile.path)
+                } else {
+                    null
+                }
+            }
 
-            if (cachedFile.exists() && (System.currentTimeMillis() - cachedFile.lastModified() < EXPIRATION_MS)) {
-                val bitmap = withContext(Dispatchers.IO) { BitmapFactory.decodeFile(cachedFile.path) }
+            if (bitmap != null) {
                 imageView.setImageBitmap(bitmap)
             } else {
-                val bytes = fetcher.fetchImage(url) ?: return@launch
-
                 withContext(Dispatchers.IO) {
-                    val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-                    FileOutputStream(cachedFile).use { it.write(bytes) }
-                    withContext(Dispatchers.Main) { imageView.setImageBitmap(bitmap) }
+                    try {
+                        val bytes = fetcher.fetchImage(url) ?: return@withContext // move this inside withContext(Dispatchers.IO) and surround with try-catch
+                        val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                        FileOutputStream(cachedFile).use { it.write(bytes) }
+                        withContext(Dispatchers.Main) { imageView.setImageBitmap(bitmap) }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+
                 }
             }
         }
     }
 
     fun clearCache(context: Context) {
-        val dir = File(context.cacheDir, CACHE_DIR)
-        if (dir.exists()) dir.deleteRecursively()
+        CoroutineScope(Dispatchers.IO).launch { // Should be launched in IO dispatcher to avoid blocking main thread if to many files
+            val dir = File(context.cacheDir, CACHE_DIR)
+            if (dir.exists()) dir.deleteRecursively()
+        }
     }
 
     private fun getFile(context: Context, url: String): File {
