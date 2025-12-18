@@ -10,7 +10,9 @@ import com.example.imageloader.ImageLoader
 import com.example.imagesfetcher.network.JsonProvider
 import com.example.imagesfetcher.network.OkHttpImageFetcher
 import com.example.imagesfetcher.ui.ImageAdapter
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 
 class MainActivity : AppCompatActivity() {
@@ -31,8 +33,8 @@ class MainActivity : AppCompatActivity() {
 
 
         lifecycleScope.launch {
-            val json = json_provider.fetchJson("https://zipoapps-storage-test.nyc3.digitaloceanspaces.com/image_list.json")
-            val items = json_provider.parseJson(json)
+            val json = withContext(Dispatchers.IO){ json_provider.fetchJson("https://zipoapps-storage-test.nyc3.digitaloceanspaces.com/image_list.json") } // big json file might block main thread
+            val items = withContext(Dispatchers.Default) { json_provider.parseJson(json) } // parsing might be CPU intensive, move to Default dispatcher
             adapter = ImageAdapter(items, imageLoader)
             recyclerView.adapter = adapter
         }
